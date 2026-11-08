@@ -30,8 +30,8 @@ canvas{display:block;height:100vh;aspect-ratio:9/16;margin:0 auto;max-width:100%
 // Ayarlar: hediye değeri eşikleri ve süreler (saniye)
 // stay: özel roller 8 dk, stayAk: kötü akraba 3 dk, stayFree: yorumla katılan halaycı 3 dk
 // Tempo: her hediye heatBase+değer*heatPer kadar tempo ekler ve holdBase+değer*holdPer sn o hızda tutar (en çok holdMax sn); sonra decay sn'de sıfıra iner
-const CFG={leader:5,sag:10,ned:10,dam:20,gel:20,akraba:30,stay:480,stayAk:180,stayFree:180,max:100,minStay:15,takiDur:60,takiGap:900,takiP:.35,stayMus:240,msMin:270,msMax:390,msDur:30,evMin:480,evMax:720,heatBase:.14,heatPer:.36,holdBase:12,holdPer:.5,holdMax:150,decay:80};
-const VERSION='v1';document.title='Halay Düğünü '+VERSION;
+const CFG={leader:5,sag:10,ned:10,dam:20,gel:20,akraba:30,stay:480,stayAk:180,stayFree:180,max:100,minStay:15,takiDur:78,stayMus:240,msDur:30,evEvery:360,msEvery:480,tkEvery:720,quiet:25,heatBase:.14,heatPer:.36,holdBase:12,holdPer:.5,holdMax:150,decay:80};
+const VERSION='v1.1';document.title='Halay Düğünü '+VERSION;
 const cv=document.getElementById('c'),g=cv.getContext('2d'),pn=document.getElementById('p');
 if(!location.hash.includes('test'))pn.style.display='none';
 addEventListener('keydown',e=>{if(e.key=='h'||e.key=='H')pn.style.display=pn.style.display=='none'?'':'none'});
@@ -142,7 +142,7 @@ function onChat(u,t){u=(u||'').trim();t=String(t==null?'':t).trim();if(!u||!t)re
 window.onGift=onGift;window.onChat=onChat;
 // TikFinity bağlantısı (yalnızca adresin sonunda #obs veya #live varsa). TikFinity yerel WebSocket: ws://localhost:21213
 const DEBUG=location.hash.includes('debug')||location.search.includes('debug');
-const TF={st:'başlıyor',tries:0,msgs:0,last:'',ok:0,gift:''};
+const TF={st:'başlıyor',tries:0,msgs:0,last:'',ok:0,gift:'',ev:Object.create(null)};
 const pk=(o,ks)=>{for(const k of ks){const v=o&&o[k];if(v!=null&&v!=='')return String(v)}return''};
 function tfHandle(m){if(!m||typeof m!='object')return;
  const ev=String(m.event||m.type||m.eventName||'').toLowerCase();let d=m.data!=null?m.data:m;
@@ -159,7 +159,7 @@ function tfHandle(m){if(!m||typeof m!='object')return;
 function tfConnect(){let ws;const host=['localhost','127.0.0.1'][TF.tries++%2];TF.st='bağlanıyor ('+host+')';
  try{ws=new WebSocket('ws://'+host+':21213/')}catch(e){TF.st='kurulamadı: '+(e.name||'hata');setTimeout(tfConnect,4000);return}
  ws.onopen=()=>{TF.st='BAĞLI ('+host+')'};
- ws.onmessage=e=>{TF.msgs++;TF.last=String(e.data).replace(/\s+/g,' ').slice(0,140);try{const m=JSON.parse(e.data);(Array.isArray(m)?m:[m]).forEach(tfHandle)}catch(x){}};
+ ws.onmessage=e=>{TF.msgs++;TF.last=String(e.data).replace(/\s+/g,' ').slice(0,140);try{const m=JSON.parse(e.data);(Array.isArray(m)?m:[m]).forEach(x=>{const k=x&&typeof x=='object'?String(x.event||x.type||x.eventName||'?').toLowerCase().slice(0,12):'?';TF.ev[k]=(TF.ev[k]||0)+1;tfHandle(x)})}catch(x){}};
  ws.onclose=()=>{TF.st=TF.st.indexOf('BAĞLI')==0?'koptu, yeniden deniyor':'ulaşılamıyor ('+host+')';setTimeout(tfConnect,3000)};
  ws.onerror=()=>{try{ws.close()}catch(e){}}}
 if(!location.hash.includes('test'))tfConnect();
@@ -389,7 +389,7 @@ function person(p,X,Y,s,t,lead,fade,lf){lf=lf||0;
  if(p.u&&RK[p.role]>=2&&!p.out){g.save();g.globalAlpha=fade*(.4+.2*Math.sin(t*3+ph));g.strokeStyle=LC[p.role]||'#ffd54f';g.lineWidth=3*s;g.beginPath();g.ellipse(X,Y+2*s,(31+3*Math.sin(t*3+ph))*s,10*s,0,0,7);g.stroke();g.restore()}
  g.save();g.translate(X+w5*3*s*amp,Y+lf);g.rotate(w5*.05*amp+(p.lean||0));{const k=(st-.35)*.06;g.scale(1-k,1+k)}
  const x=0,by=-28*s-hopB,bt=by-46*s,hy=bt-13*s;
- const gel=p.role=='gel',ned=p.role=='ned',dam=p.role=='dam',sag=p.role=='sag',akr=p.role=='akraba',kay=p.role=='kay';
+ const gel=p.role=='gel',ned=p.role=='ned',dam=p.role=='dam',sag=p.role=='sag',akr=p.role=='akraba',kay=p.role=='kay',kom=p.role=='kom',asc=p.role=='asc',kk=kay||kom||asc;
  const sl=ROLE_COL[p.role]||(p.male?p.c1:p.dr);
  // bacaklar + ayakkabılar
  const lr=(kR+kK)*amp,ll=kL*amp;
@@ -422,6 +422,7 @@ function person(p,X,Y,s,t,lead,fade,lf){lf=lf||0;
   g.fillStyle='#0004';g.beginPath();g.arc(2.5*s,bt+26*s,1.3*s,0,7);g.arc(2.5*s,bt+34*s,1.3*s,0,7);g.fill();
   if(dam){g.fillStyle='#fff';g.beginPath();g.arc(-8*s,bt+8*s,2.4*s,0,7);g.fill();g.fillStyle='#e53935';g.beginPath();g.arc(-8*s,bt+8*s,1.2*s,0,7);g.fill()}
   if(sag){g.strokeStyle='#ffd54f';g.lineWidth=5*s;g.beginPath();g.moveTo(-13*s,bt);g.lineTo(13*s,bt+40*s);g.stroke()}}
+ if(asc){g.fillStyle='#fff';g.strokeStyle='#cfcfcf';g.lineWidth=1.2*s;g.beginPath();g.roundRect(-11*s,bt+10*s,22*s,by-bt-6*s,3*s);g.fill();g.stroke()}
  if(kay){g.fillStyle='#f3ead2';g.beginPath();g.moveTo(-8*s,bt+16*s);g.lineTo(8*s,bt+16*s);g.lineTo(13*s+w5*2*s,by+3*s);g.lineTo(-13*s+w5*2*s,by+3*s);g.closePath();g.fill();g.strokeStyle='#a1887f';g.lineWidth=1.2*s;g.stroke()}
  // gelin duvağı (yüzün arkasında dalgalanır)
  if(gel){const vs=Math.sin(t*4+ph)*3*s;g.fillStyle='#ffffff99';g.strokeStyle='#d6dee8';g.lineWidth=1.2*s;g.beginPath();
@@ -435,7 +436,7 @@ function person(p,X,Y,s,t,lead,fade,lf){lf=lf||0;
   g.strokeStyle=p.sk;g.lineWidth=5.5*s;g.beginPath();g.moveTo(mx,my);g.lineTo(hx,hy2);g.stroke();
   g.fillStyle=p.sk;g.beginPath();g.arc(hx,hy2,3.8*s,0,7);g.fill()};
  const pm=.5+.5*Math.sin(TP*2*U-1.2),ap=(pm*10+kK*24)*s*amp;
- arm(-12*s,bt+6*s,p.ml?p.ml[0]:-20*s-pm*4*s*amp,p.ml?p.ml[1]:((akr||kay)?bt-28*s+Math.sin(t*15)*12*s:by-2*s-ap),-3*s);
+ arm(-12*s,bt+6*s,p.ml?p.ml[0]:-20*s-pm*4*s*amp,p.ml?p.ml[1]:((akr||kk)?bt-28*s+Math.sin(t*15)*12*s:by-2*s-ap),-3*s);
  if(lead){const hx=30*s,hy2=bt-24*s,w=Math.sin(t*8+ph),w2=Math.cos(t*8+ph);arm(12*s,bt+6*s,hx,hy2,3*s);
   g.fillStyle='#fff';g.strokeStyle='#bdbdbd';g.lineWidth=1.2*s;g.beginPath();g.moveTo(hx,hy2);
   g.bezierCurveTo(hx+14*s,hy2-16*s+w*6*s,hx+38*s,hy2-10*s+w2*8*s,hx+46*s,hy2-24*s+w*8*s);
@@ -444,11 +445,16 @@ function person(p,X,Y,s,t,lead,fade,lf){lf=lf||0;
   g.strokeStyle='#e2e2e2';g.beginPath();g.moveTo(hx+4*s,hy2);g.quadraticCurveTo(hx+28*s,hy2+w*4*s,hx+46*s,hy2-24*s+w*8*s);g.stroke();
   g.fillStyle=p.sk;g.beginPath();g.arc(hx,hy2,3.8*s,0,7);g.fill();
   g.fillStyle='#ffd54f';g.fillRect(-13*s,bt+20*s,26*s,5*s)}
- else{const rx=akr?24*s:kay?26*s:20*s+pm*4*s*amp,ry=akr?bt+2*s+Math.sin(t*3)*3*s:kay?bt-22*s+Math.sin(t*11)*12*s:by-2*s-ap;
+ else{const rx=akr?24*s:kk?26*s:20*s+pm*4*s*amp,ry=akr?bt+2*s+Math.sin(t*3)*3*s:kk?bt-22*s+Math.sin(t*(kom?14:11))*12*s:by-2*s-ap;
   arm(12*s,bt+6*s,p.mr?p.mr[0]:rx,p.mr?p.mr[1]:ry,3*s);
   if(gel&&!p.mr){g.strokeStyle='#3b7d36';g.lineWidth=2*s;g.beginPath();g.moveTo(rx,ry);g.lineTo(rx+1*s,ry-8*s);g.stroke();
    [['#f48fb1',-3.5,-10],['#ffffff',3.5,-11],['#e53935',0,-14]].forEach(f=>{g.fillStyle=f[0];g.beginPath();g.arc(rx+f[1]*s,ry+f[2]*s,3.6*s,0,7);g.fill()})}
-  if(kay){g.save();g.translate(rx,ry);g.rotate(Math.sin(t*11)*.6-.5);g.fillStyle='#c8964f';g.strokeStyle='#6b4423';g.lineWidth=1.6*s;g.beginPath();g.roundRect(-3.6*s,-38*s,7.2*s,44*s,3*s);g.fill();g.stroke();g.restore();g.fillStyle=p.sk;g.beginPath();g.arc(rx,ry,3.8*s,0,7);g.fill()}}
+  if(kay){g.save();g.translate(rx,ry);g.rotate(Math.sin(t*11)*.6-.5);g.fillStyle='#c8964f';g.strokeStyle='#6b4423';g.lineWidth=1.6*s;g.beginPath();g.roundRect(-3.6*s,-38*s,7.2*s,44*s,3*s);g.fill();g.stroke();g.restore();g.fillStyle=p.sk;g.beginPath();g.arc(rx,ry,3.8*s,0,7);g.fill()}
+  if(kom){const sw=Math.sin(t*14);g.save();g.translate(rx,ry-6*s);g.rotate(sw*.3);g.fillStyle='#cfd8dc';g.strokeStyle='#546e7a';g.lineWidth=1.8*s;g.beginPath();g.arc(0,-13*s,15*s,0,7);g.fill();g.stroke();
+   g.fillStyle='#546e7a';g.beginPath();g.arc(0,-13*s,3.4*s,0,7);g.fill();g.strokeStyle='#ffffffaa';g.lineWidth=2*s;g.beginPath();g.arc(0,-13*s,10*s,3.6,4.8);g.stroke();
+   if(sw>.6){g.strokeStyle='#ffe082';g.lineWidth=2.4*s;g.beginPath();for(let i=0;i<5;i++){const a=-2.6+i*.55;g.moveTo(Math.cos(a)*19*s,-13*s+Math.sin(a)*19*s);g.lineTo(Math.cos(a)*27*s,-13*s+Math.sin(a)*27*s)}g.stroke()}
+   g.restore();g.fillStyle=p.sk;g.beginPath();g.arc(rx,ry,3.8*s,0,7);g.fill()}
+  if(asc){g.save();g.translate(rx,ry);g.rotate(Math.sin(t*12)*.5-.4);g.strokeStyle='#8d6e63';g.lineWidth=3.2*s;g.beginPath();g.moveTo(0,4*s);g.lineTo(0,-34*s);g.stroke();g.fillStyle='#b0bec5';g.strokeStyle='#546e7a';g.lineWidth=1.6*s;g.beginPath();g.arc(0,-39*s,8*s,0,7);g.fill();g.stroke();g.restore();g.fillStyle=p.sk;g.beginPath();g.arc(rx,ry,3.8*s,0,7);g.fill()}}
  // kafa (hafif eğilir)
  g.save();g.translate(0,bt);g.rotate(w5*.05);g.translate(0,-bt);
  g.fillStyle=p.hr;
@@ -457,14 +463,14 @@ function person(p,X,Y,s,t,lead,fade,lf){lf=lf||0;
  g.fillStyle=p.sk;g.beginPath();g.arc(0,hy,15*s,0,7);g.fill();
  g.fillStyle=p.hr;g.beginPath();g.arc(0,hy-2*s,15.5*s,3.3,6.1);g.fill();
  g.fillStyle='#ff6f6f2e';g.beginPath();g.ellipse(-8.5*s,hy+5*s,3*s,2*s,0,0,7);g.ellipse(8.5*s,hy+5*s,3*s,2*s,0,0,7);g.fill();
- const mood=akr?0:kay?2:faceMood(p,t),bl=p.sleep||((t*1000+ph*1357)%3300)<130;
+ const mood=akr?0:kk?(p.happy?1:2):faceMood(p,t),bl=p.sleep||((t*1000+ph*1357)%3300)<130;
  g.fillStyle='#222';g.strokeStyle='#222';g.lineWidth=1.6*s;
  {const ey=hy+1*s,er=(mood==2?2.7:1.8)*s;
   if(bl){g.lineWidth=1.8*s;g.beginPath();g.moveTo(-7.5*s,ey+.5*s);g.lineTo(-2.5*s,ey+.5*s);g.moveTo(2.5*s,ey+.5*s);g.lineTo(7.5*s,ey+.5*s);g.stroke()}
   else if(mood==4){for(const dx of[-5,5]){g.beginPath();g.arc(dx*s,ey+2*s,2.4*s,3.4,6.0);g.stroke()}}
   else if(mood==3){g.beginPath();g.arc(-5*s,ey,er,0,7);g.fill();g.beginPath();g.moveTo(2.5*s,ey);g.lineTo(7.5*s,ey);g.stroke()}
   else{g.beginPath();g.arc(-5*s,ey,er,0,7);g.fill();g.beginPath();g.arc(5*s,ey,er,0,7);g.fill()}}
- if(kay){g.strokeStyle='#222';g.lineWidth=2.4*s;g.beginPath();g.moveTo(-10*s,hy-6*s);g.lineTo(-2*s,hy-2.5*s);g.moveTo(10*s,hy-6*s);g.lineTo(2*s,hy-2.5*s);g.stroke()}
+ if(kk&&!p.happy){g.strokeStyle='#222';g.lineWidth=2.4*s;g.beginPath();g.moveTo(-10*s,hy-6*s);g.lineTo(-2*s,hy-2.5*s);g.moveTo(10*s,hy-6*s);g.lineTo(2*s,hy-2.5*s);g.stroke()}
  if(akr){g.strokeStyle='#222';g.lineWidth=2.2*s;g.beginPath();g.moveTo(-10*s,hy-7*s);g.lineTo(-2*s,hy-3*s);g.moveTo(10*s,hy-7*s);g.lineTo(2*s,hy-3*s);g.stroke();
   g.strokeStyle='rgba(90,50,30,.45)';g.lineWidth=1*s;for(let k=-1;k<=1;k++){g.beginPath();g.moveTo(-7*s,hy-10*s+k*3*s);g.lineTo(7*s,hy-10*s+k*3*s);g.stroke()}
   g.beginPath();g.moveTo(-9*s,hy+3*s);g.lineTo(-11*s,hy+9*s);g.moveTo(9*s,hy+3*s);g.lineTo(11*s,hy+9*s);g.stroke();
@@ -478,6 +484,10 @@ function person(p,X,Y,s,t,lead,fade,lf){lf=lf||0;
   g.fillStyle='#e1bee7';for(let i=0;i<6;i++){const a=Math.PI*(1+i*.2);g.beginPath();g.arc(Math.cos(a)*16*s,hy+Math.sin(a)*16*s,1.5*s,0,7);g.fill()}
   g.fillStyle='#7b1fa2';g.beginPath();g.moveTo(-9*s,hy+12*s);g.lineTo(0,hy+24*s);g.lineTo(9*s,hy+12*s);g.quadraticCurveTo(0,hy+17*s,-9*s,hy+12*s);g.fill()}
  if(ned){for(let i=-2;i<=2;i++){g.fillStyle=['#fff','#ffd54f','#ef5350'][(i+2)%3];g.beginPath();g.arc(i*6*s,hy-14*s+Math.abs(i)*1.2*s,3.2*s,0,7);g.fill()}}
+ if(kom){g.fillStyle=p.hr;g.beginPath();g.ellipse(0,hy-11*s,16*s,8*s,0,0,7);g.fill();const cc=['#f48fb1','#81d4fa','#fff59d','#a5d6a7','#f48fb1'];
+  for(let i=-2;i<=2;i++){g.save();g.translate(i*6.2*s,hy-12*s+Math.abs(i)*1.8*s);g.rotate(i*.28);g.fillStyle=cc[i+2];g.strokeStyle='#0005';g.lineWidth=1*s;g.beginPath();g.roundRect(-2.7*s,-8*s,5.4*s,13*s,2.4*s);g.fill();g.stroke();g.restore()}}
+ if(asc){g.fillStyle='#fff';g.strokeStyle='#b0b0b0';g.lineWidth=1.3*s;[[-8,-23,8],[0,-27,9.5],[8,-23,8]].forEach(a=>{g.beginPath();g.arc(a[0]*s,hy+a[1]*s,a[2]*s,0,7);g.fill();g.stroke()});g.beginPath();g.roundRect(-11*s,hy-24*s,22*s,13*s,2*s);g.fill();g.stroke();
+  g.fillStyle='#222';g.beginPath();g.ellipse(-4.2*s,hy+3.6*s,4.4*s,1.8*s,.25,0,7);g.ellipse(4.2*s,hy+3.6*s,4.4*s,1.8*s,-.25,0,7);g.fill()}
  if(lead){g.fillStyle='#ffd54f';g.beginPath();g.moveTo(-9*s,hy-14*s);g.lineTo(-9*s,hy-26*s);g.lineTo(-3*s,hy-19*s);g.lineTo(0,hy-28*s);g.lineTo(3*s,hy-19*s);g.lineTo(9*s,hy-26*s);g.lineTo(9*s,hy-14*s);g.fill()}
  g.restore();
  if(akr){const bx=24*s,by2=bt+2*s+Math.sin(t*3)*3*s;
@@ -485,6 +495,10 @@ function person(p,X,Y,s,t,lead,fade,lf){lf=lf||0;
   g.fillStyle='#e0b040';g.fillRect(bx-5*s,by2-13*s,10*s,7*s);g.fillStyle='#bbb';g.fillRect(bx-3*s,by2-34*s,6*s,3*s);
   g.fillStyle='#ffffff55';g.fillRect(bx-3.5*s,by2-19*s,2*s,16*s);
   g.fillStyle=p.sk;g.beginPath();g.arc(bx,by2,3.8*s,0,7);g.fill()}
+ if(asc){const px=-42*s,py=-6*s;g.fillStyle='#455a64';g.strokeStyle='#263238';g.lineWidth=2*s;g.beginPath();g.moveTo(px-22*s,py-20*s);g.quadraticCurveTo(px-26*s,py+14*s,px,py+16*s);g.quadraticCurveTo(px+26*s,py+14*s,px+22*s,py-20*s);g.closePath();g.fill();g.stroke();
+  g.fillStyle=p.pot?'#fff8e1':'#1c262b';g.beginPath();g.ellipse(px,py-20*s,22*s,7*s,0,0,7);g.fill();g.stroke();
+  g.beginPath();g.arc(px-24*s,py-15*s,4*s,Math.PI*.5,Math.PI*1.5);g.stroke();g.beginPath();g.arc(px+24*s,py-15*s,4*s,Math.PI*1.5,Math.PI*.5);g.stroke();
+  if(p.pot){for(let i=0;i<3;i++){const u=((t*.7+i/3)%1);g.globalAlpha=fade*(1-u)*.55;g.fillStyle='#fff';g.beginPath();g.arc(px+Math.sin(t*2.5+i*2)*6*s,py-28*s-u*46*s,(5+u*8)*s,0,7);g.fill()}g.globalAlpha=fade}}
  if(p.role=='davul'){g.fillStyle='#8d5a2b';g.beginPath();g.ellipse(0,by-4*s,24*s,18*s,0,0,7);g.fill();g.strokeStyle='#e8d5a8';g.lineWidth=3*s;g.stroke();g.strokeStyle='#4a2c17';g.lineWidth=4*s;const m=Math.sin(t*14+ph)*8*s;g.beginPath();g.moveTo(14*s,bt+8*s);g.lineTo(10*s,by-16*s+m);g.stroke()}
  if(p.role=='zurna'){g.strokeStyle='#4a2c17';g.lineWidth=5*s;g.beginPath();g.moveTo(4*s,hy+6*s);g.lineTo(34*s,hy+6*s);g.stroke();g.fillStyle='#c9a24b';g.beginPath();g.moveTo(34*s,hy+6*s);g.lineTo(48*s,hy-4*s);g.lineTo(48*s,hy+16*s);g.fill()}
  g.restore();g.globalAlpha=1}
@@ -522,6 +536,7 @@ function drawToasts(){const now=Date.now();
 // ---- Mini olaylar: yorum yazılmazsa düğün bozulur (yaklaşık 20 dakikada bir) ----
 const EX=[]; // olay figüranları (misafir gelin, kaynana)
 RK.kay=2.5;LBL.kay='Kaynana';ROLE_COL.kay='#5d4037';LC.kay='#bcaaa4';
+RK.kom=2.5;LBL.kom='Şikayetçi!';ROLE_COL.kom='#f06292';LC.kom='#f8bbd0';RK.asc=2.5;LBL.asc='Aşçıbaşı';ROLE_COL.asc='#eceff1';LC.asc='#ffe0b2';
 const EVS={
  tansiyon:{t:'GELİNİN TANSİYONU DÜŞTÜ!',s:'Yorum yaz, gelin ayılsın!',kt:'"su" yazan daha çok yardım eder',kw:['su','şeker','seker','ayran','limon'],ok:'Gelin ayıldı, düğün devam!',bad:'Gelin bayıldı, düğün durdu!',c:'#ff8a80',
   say:['Su getirin!','Yelpaze yelpaze!','Geline hava verin!','Aman Allah\'ım!','Limon kokutun!']},
@@ -532,8 +547,14 @@ const EVS={
  elektrik:{t:'ELEKTRİKLER KESİLDİ!',s:'Yorum yaz, ışıklar yansın!',kt:'"ışık" yazan daha çok yardım eder',kw:['ışık','ısık','isik','işik','elektrik'],ok:'Işıklar geldi, düğün devam!',bad:'Düğün karanlıkta kaldı!',c:'#fff59d',
   say:['Kim kapattı?','Telefon fenerini aç!','Karanlıkta halay mı olur?','Sigorta attı!','Ay korktum!']},
  damat:{t:'DAMAT KAÇMAYA ÇALIŞIYOR!',s:'Yorum yaz, damadı tutun!',kt:'"tut" yazan daha çok yardım eder',kw:['tut','tutun','yakala','kaçma','dur','bırakma'],ok:'Damat yakalandı, düğün devam!',bad:'Damat kaçtı, düğün durdu!',c:'#80d8ff',
-  say:['Tutun damadı!','Kaçıyor kaçıyor!','Kapıyı tutun!','Yakalayın şunu!','Nereye damat?']}};
-let EV=null,evAt=Date.now()/1000+R(150,270),evLast='';
+  say:['Tutun damadı!','Kaçıyor kaçıyor!','Kapıyı tutun!','Yakalayın şunu!','Nereye damat?']},
+ komsu:{t:'KOMŞULARDAN ŞİKAYET GELDİ!',s:'Yorum yaz, komşuyu yatıştır!',kt:'"baklava" yazan daha çok yardım eder',kw:['baklava','pardon','özür','ozur','kusura','komşu','komsu','tatlı','tatli'],ok:'Komşu yatıştı, halay devam!',bad:'Komşu müziği kapattı, düğün durdu!',c:'#f48fb1',
+  say:['Özür dileriz teyze!','Baklava ikram edelim!','Sesi kısıyoruz!','Kusura bakmayın!','Çay içer misiniz?']},
+ pilav:{t:'PİLAV BİTTİ!',s:'Yorum yaz, aşçıya yardım et!',kt:'"pilav" yazan daha çok yardım eder',kw:['pilav','pirinç','pirinc','kazan','aşçı','asci','yemek','çorba','corba'],ok:'Pilav yetişti, afiyet olsun!',bad:'Pilav yetişmedi, düğün durdu!',c:'#ffcc80',
+  say:['Pilav yapın!','Tencere tencere!','Pirinç yok mu?','Ben aç kaldım!','Pilavsız düğün olmaz!']},
+ yagmur:{t:'YAĞMUR BASTIRDI!',s:'Yorum yaz, şemsiyeleri aç!',kt:'"şemsiye" yazan daha çok yardım eder',kw:['şemsiye','semsiye','çadır','cadir','yağmur','yagmur'],ok:'Yağmur dindi, halay devam!',bad:'Sağanak bastırdı, düğün durdu!',c:'#81d4fa',
+  say:['Yağmur başladı!','Şemsiye getirin!','Saçım ıslandı!','Gelinlik ıslanıyor!','Çadıra girin!']}};
+let EV=null,evAt=Date.now()/1000+R(120,200),evLast='',QU=0;const nxt=(pv,t,b)=>Math.max(t+b*.5,Math.min(pv,t)+b*R(.93,1.07));
 const toks=tx=>String(tx).replace(/İ/g,'i').replace(/I/g,'ı').toLowerCase().split(/[^a-z0-9çğıöşüâî]+/).filter(Boolean);
 function evHit(u,tx){if(!EV||EV.ph!='run')return;const now=Date.now();if(now-(EV.cd[u]||0)<1200)return;EV.cd[u]=now;
  const w=toks(tx),kw=EVS[EV.k].kw.some(k=>w.some(x=>x==k||(k.length>3&&x.startsWith(k))));
@@ -542,10 +563,13 @@ function evGift(){if(EV&&EV.ph=='run'){EV.m=Math.min(1,EV.m+.2);EV.fl=1}}
 function mkBride(){const b={u:'Gelin Hanım',lb:'',role:'gel',male:false,sk:pick(SK),hr:'#2b1a10',c1:'#000',c2:'#fff',dr:'#fff',ph:R(0,6),x:CX-56,y:CY+24,s:1.55,ts:1.55,al:0,msg:'',mt:0,ms:0};EX.push(b);EV.tg=b;EV.npc=b}
 function mkGroom(){const b={u:'Damat Bey',lb:'',role:'dam',male:true,sk:pick(SK),hr:'#1b1b1b',c1:'#1a237e',c2:'#fff',dr:'',ph:R(0,6),x:CX+56,y:CY+24,s:1.55,ts:1.55,al:0,msg:'',mt:0,ms:0,flee:true};EX.push(b);EV.tg=b;EV.npc=b}
 function startEvent(k){if(EV||TK||!EVS[k]||(k=='davulcu'&&holder('davul')))return;const t=Date.now()/1000;
- EV={k,t0:t,ph:'run',pt:t,m:k=='elektrik'?.35:k=='damat'?.6:.5,dir:Math.random()<.5?1:-1,f:0,cd:Object.create(null),hits:0,fl:0,sayT:t+2.5,tg:null,npc:null,tmv:1,da:0,dl:0};evAt=t+R(CFG.evMin,CFG.evMax);evLast=k;SHK=Math.max(SHK,14);
+ EV={k,t0:t,ph:'run',pt:t,m:k=='elektrik'?.35:k=='damat'?.6:k=='yagmur'?.45:.5,dir:Math.random()<.5?1:-1,f:0,cd:Object.create(null),hits:0,fl:0,sayT:t+2.5,tg:null,npc:null,tmv:1,da:0,dl:0,uk:0,rn:0,rl:.8,ln:t+3,lf:0};evAt=nxt(evAt,t,CFG.evEvery);evLast=k;SHK=Math.max(SHK,14);
  if(k=='tansiyon'){const real=Object.values(P).find(q=>q.role=='gel'&&!q.hid&&!q.out&&!q.leave&&!q.pend&&!q.ent);
   if(real)EV.tg=real;else mkBride()}
  if(k=='kaynana'){const sd=Math.random()<.5,b={u:'Kaynana',lb:'Delirdi!',role:'kay',male:false,sk:'#e0b08a',hr:'#cfcfcf',c1:'#000',c2:'#fff',dr:'#5d4037',ph:R(0,6),x:sd?-90:1170,y:R(1250,1350),s:1.55,ts:1.55,al:1,msg:'',mt:0,ms:0,tg:[CX,CY+40],tn:0,st:0};EX.push(b);EV.tg=b;EV.npc=b;say(b,'Bu düğün olmaz!',2200)}
+ if(k=='komsu'||k=='pilav'){const km=k=='komsu',sd=Math.random()<.5,hm=[CX+(sd?-1:1)*(km?300:270),CY+(km?335:345)],
+   b=km?{u:'Komşu Teyze',lb:'Şikayetçi!',role:'kom',male:false,sk:'#e8b896',hr:'#5d4037',c1:'#000',c2:'#fff',dr:'#f06292'}:{u:'Aşçıbaşı',lb:'Pilav bitti!',role:'asc',male:true,sk:pick(SK),hr:'#222',c1:'#eceff1',c2:'#fff',dr:''};
+  Object.assign(b,{ph:R(0,6),x:sd?-90:1170,y:hm[1]+R(-30,30),s:1.55,ts:1.55,al:1,msg:'',mt:0,ms:0,tg:hm.slice(),home:hm,tn:0,st:0,pot:0});EX.push(b);EV.tg=b;EV.npc=b;say(b,km?'Saat kaç, farkında mısınız!':'Pilav bitti, pilav!',2400)}
  if(k=='damat'){const real=Object.values(P).find(q=>q.role=='dam'&&!q.hid&&!q.out&&!q.leave&&!q.pend&&!q.ent);if(real){EV.tg=real;real.flee=true}else mkGroom()}
  if(k=='davulcu')MZ[0].sleep=true}
 function evEnd(res){const E=EV,b=E.npc;E.ph=res;E.pt=Date.now()/1000;
@@ -554,8 +578,11 @@ function evEnd(res){const E=EV,b=E.npc;E.ph=res;E.pt=Date.now()/1000;
  if(E.k=='tansiyon'&&E.tg)say(E.tg,res=='ok'?'Ayıldım! Halay devam!':'Ohh... bayıldım...',2800);
  if(E.k=='kaynana'&&b)say(b,res=='ok'?'Tamam tamam, razıyım!':'DAĞILIN! Düğün bitti!',2800);
  if(E.k=='damat'&&E.tg&&res=='ok')say(E.tg,'Tamam, kalıyorum!',2800);
+ if(E.k=='komsu'&&b)say(b,res=='ok'?'Baklavayı aldım, gidiyorum!':'Müziği kapatın! Yeter!',2800);
+ if(E.k=='pilav'&&b)say(b,res=='ok'?'Pilav hazır, afiyet olsun!':'Misafirler aç kaldı...',2800);
+ if(E.k=='yagmur'){const v=ring.filter(q=>q.role=='n'&&!q.hid&&!q.out&&!q.leave&&!q.ent);if(v.length)say(pick(v),res=='ok'?'Yağmur dindi, halay!':'Sırılsıklam olduk!',2600)}
  if(E.k=='davulcu'){say(MZ[0],res=='ok'?'Hä? Ne oldu? Dum dum!':'Zzz...',2800);if(res=='ok')MZ[0].sleep=false}}
-function evClear(){for(const b of EX)b.gone=true;if(EV&&EV.tg){EV.tg.lie=false;EV.tg.sleep=false;EV.tg.flee=false}MZ[0].sleep=false;EV=null}
+function evClear(){for(const b of EX)b.gone=true;if(EV&&EV.tg){EV.tg.lie=false;EV.tg.sleep=false;EV.tg.flee=false}MZ[0].sleep=false;EV=null;QU=Date.now()/1000+CFG.quiet}
 // her karede çağrılır; dönen değer dans hızının çarpanı (düğün bozuldukça yavaşlar)
 function evStep(t,dt){const E=EV,def=EVS[E.k],age=t-E.t0;let pa=t-E.pt,tg=1;E.fl=Math.max(0,E.fl-dt*2.5);
  // hedef kişi (gerçek gelin/damat) sahneden gittiyse figüranla devam et
@@ -581,8 +608,20 @@ function evStep(t,dt){const E=EV,def=EVS[E.k],age=t-E.t0;let pa=t-E.pt,tg=1;E.fl
    const dx=b.tg[0]-b.x,dy=b.tg[1]-b.y,d=Math.hypot(dx,dy),st=300*dt;if(d>st){b.x+=dx/d*st;b.y+=dy/d*st}
    b.evr=Math.sin(t*13)*.1;
    if(t>b.st){b.st=t+R(2.6,3.8);say(b,pick(['Bu düğün olmaz!','Gelin kız mı bu?','Ben razı değilim!','Oğlum nerede?','Yeter artık!','Hepinizi!']),2000)}}
-  else if(E.ph=='ok'){b.evr=0;const dir=b.x<CX?-1:1;if(pa>2.5)b.x+=dir*140*dt}
+  else if(E.ph=='ok'){b.evr=0;b.happy=true;const dir=b.x<CX?-1:1;if(pa>2.5)b.x+=dir*140*dt}
   else b.evr=Math.sin(t*22)*.12}
+ if((E.k=='komsu'||E.k=='pilav')&&b){const km=E.k=='komsu';
+  if(E.ph=='run'){if(t>b.tn){b.tn=t+R(1.4,2.6);const h=b.home;b.tg=km&&Math.random()<.4?[CX+(h[0]<CX?-1:1)*R(120,300),CY+R(310,350)]:[h[0]+R(-40,40)*(km?.7:1.7),h[1]+R(-25,25)]}
+   const dx=b.tg[0]-b.x,dy=b.tg[1]-b.y,d=Math.hypot(dx,dy),st=(km?260:320)*dt;if(d>st){b.x+=dx/d*st;b.y+=dy/d*st}
+   b.evr=Math.sin(t*(km?12:16))*(km?.05:.09);
+   if(t>b.st){b.st=t+R(2.6,3.8);say(b,pick(km?['Saat kaç oldu?','Çocuk uyuyor!','Sabaha kadar mı çalacaksınız?','Muhtara şikayet ederim!','Yeter ama, kulaklarım!','Her hafta düğün mü olur?']:['Pilav bitti!','Tencere bomboş!','Pirinç getirin!','Misafirler aç kalacak!','Yetişmedi, yetişmedi!','Kim yedi hepsini?']),2000)}}
+  else if(E.ph=='ok'){b.evr=0;b.happy=true;b.pot=1;b.lb=km?'Yatıştı':'Afiyet olsun!';const dir=b.x<CX?-1:1;if(pa>2.5)b.x+=dir*150*dt}
+  else{b.evr=Math.sin(t*22)*(km?.12:.06);b.pot=0}}
+ if(E.k=='yagmur'){let r;
+  if(E.ph=='run'){r=Math.max(.15,1-E.m*.85);E.rl=r}else if(E.ph=='bad')r=Math.min(1.3,E.rl+pa*.35);else r=E.rl*Math.max(0,1-pa/2.4);
+  E.rn=r;const ut=E.ph=='bad'?0:Math.min(1,E.m*1.25)*18;E.uk+=(ut-E.uk)*(1-Math.exp(-dt*(ut>E.uk?3:6)));
+  if(E.ph!='ok'&&t>E.ln){E.ln=t+R(2.5,6)/(E.ph=='bad'?1.8:1);E.lf=1;SHK=Math.max(SHK,4)}
+  E.lf=Math.max(0,E.lf-dt*3.2)}
  if(E.k=='elektrik'){let d;
   if(E.ph=='run'){d=.95*(1-E.m*.92)*(1-.5*E.fl);E.dl=d}
   else if(E.ph=='bad')d=E.dl+(.93-E.dl)*Math.min(1,pa/.6);
@@ -591,6 +630,20 @@ function evStep(t,dt){const E=EV,def=EVS[E.k],age=t-E.t0;let pa=t-E.pt,tg=1;E.fl
  if(E.ph=='ok'&&pa>6){evClear();return 1}
  if(E.ph=='bad'&&pa>7){evClear();return 1}
  E.tmv+=(tg-E.tmv)*(1-Math.exp(-dt*(tg<E.tmv?3:4)));return E.tmv}
+// yağmur: koyulaşma + yağmur çizgileri + şimşek, şemsiyeler halaycıların başında açılır
+function rainFx(E,t){g.save();g.fillStyle='rgba(16,30,56,'+(.42*Math.min(1,E.rn))+')';g.fillRect(0,0,1080,1920);
+ const n=Math.round(30+170*Math.min(1,E.rn));g.strokeStyle='rgba(200,225,255,.5)';g.lineWidth=2.6;g.beginPath();
+ for(let i=0;i<n;i++){const sp=1500+(i%7)*140,x=((i*173.7+t*210)%1240)-80,y=((i*97.13+t*sp)%2100)-100;g.moveTo(x,y);g.lineTo(x-16,y+62)}g.stroke();
+ if(E.lf>0){g.fillStyle='rgba(255,255,255,'+(.6*E.lf)+')';g.fillRect(0,0,1080,1920)}g.restore()}
+const UC=['#e53935','#1e88e5','#43a047','#fdd835','#8e24aa','#fb8c00'];
+function umbrellas(E,t){const k=E.uk;if(k<.02)return;const pa=t-E.pt,fo=E.ph=='ok'?Math.max(0,Math.min(1,1-(pa-4)/1.6)):1;if(fo<=0)return;
+ const L=ring.filter(q=>!q.out&&!q.leave&&!q.ent&&!q.hid);
+ for(let i=0;i<Math.min(18,L.length);i++){const sc=Math.max(0,Math.min(1,k-i));if(sc<=0)break;const q=L[i],s=q.s;
+  g.save();g.globalAlpha=fo*(q.al==null?1:q.al);g.translate(q.x+(q.ox||0),q.y+(q.oy||0)+(q.jy||0)-104*s);g.scale(sc,sc);
+  g.fillStyle=UC[i%UC.length];g.strokeStyle='#0006';g.lineWidth=1.6*s;g.beginPath();g.moveTo(-36*s,-18*s);g.bezierCurveTo(-36*s,-48*s,36*s,-48*s,36*s,-18*s);
+  g.quadraticCurveTo(24*s,-11*s,12*s,-18*s);g.quadraticCurveTo(0,-11*s,-12*s,-18*s);g.quadraticCurveTo(-24*s,-11*s,-36*s,-18*s);g.fill();g.stroke();
+  g.strokeStyle='#0004';g.beginPath();g.moveTo(0,-43*s);g.lineTo(-12*s,-18*s);g.moveTo(0,-43*s);g.lineTo(12*s,-18*s);g.moveTo(0,-43*s);g.lineTo(0,-18*s);g.stroke();
+  g.strokeStyle='#3e2723';g.lineWidth=2.4*s;g.beginPath();g.moveTo(0,-18*s);g.lineTo(0,0);g.stroke();g.restore()}}
 // elektrik kesintisi: karartma + telefon fenerleri
 const dkc=document.createElement('canvas');dkc.width=540;dkc.height=960;const dk=dkc.getContext('2d');
 function darkness(a,m){dk.globalCompositeOperation='source-over';dk.clearRect(0,0,540,960);dk.fillStyle='#02030c';dk.fillRect(0,0,540,960);
@@ -636,7 +689,7 @@ function evHud(t){const E=EV;if(!E)return;const def=EVS[E.k],ph=E.ph,pa=t-E.pt,a
 window.olay=k=>{if(EV||MS||TK)return;startEvent(k&&EVS[k]?k:pick(Object.keys(EVS).filter(x=>!(x=='davulcu'&&holder('davul')))))};
 // ---- Müzisyen seçimi: davulcu ve zurnacı ücretsiz. Yorumla katıl, rastgele biri seçilir ----
 let MS=null,msAt=Date.now()/1000+R(200,300);
-function msStart(t){if(MS||EV||TK)return;t=t||Date.now()/1000;MS={t0:t,ph:'open',pt:t,dv:new Set(),zr:new Set(),res:null};msAt=t+R(CFG.msMin,CFG.msMax);evAt=Math.max(evAt,t+CFG.msDur+40);SHK=Math.max(SHK,8)}
+function msStart(t){if(MS||EV||TK)return;t=t||Date.now()/1000;MS={t0:t,ph:'open',pt:t,dv:new Set(),zr:new Set(),res:null};msAt=nxt(msAt,t,CFG.msEvery);SHK=Math.max(SHK,8)}
 const msEl=u=>{const q=P[u];return!q||(q.role=='n'&&!q.out&&!q.leave&&!q.pend)};
 function msHit(u,tx){if(!MS||MS.ph!='open'||MS.dv.has(u)||MS.zr.has(u)||!msEl(u))return;
  const w=toks(tx),d=w.some(x=>x=='davul'||x.startsWith('davulcu')),z=w.some(x=>x=='zurna'||x.startsWith('zurnac'));
@@ -647,7 +700,7 @@ function msStep(t){const M=MS;if(!M)return;
   M.res={d,z};M.ph='res';M.pt=t;
   if(d)grant(d,'davul',true,true);
   if(z)grant(z,'zurna',true,true)}
- else if(M.ph=='res'&&t-M.pt>5){evAt=Math.max(evAt,t+60);MS=null}}
+ else if(M.ph=='res'&&t-M.pt>5){MS=null;QU=t+CFG.quiet}}
 function msHud(t){const M=MS;if(!M)return;const age=t-M.t0,pa=t-M.pt,open=M.ph=='open';
  g.save();g.textAlign='center';g.lineJoin='round';
  const nm=u=>u.length>16?u.slice(0,15)+'…':u,any=!open&&(M.res.d||M.res.z),bn=open&&age<BN-.2;
@@ -668,13 +721,13 @@ function msHud(t){const M=MS;if(!M)return;const age=t-M.t0,pa=t-M.pt,open=M.ph==
 window.secim=()=>{if(!MS&&!EV&&!TK)msStart()};
 
 // ---- Takı merasimi: halay 1 dk boşalır, gelin-damata zoom, hediye gönderenler "X N takı taktı" ----
-let TK=null,tkNext=Date.now()/1000+300;
+let TK=null,tkNext=Date.now()/1000+R(480,600);
 const tkFind=r=>Object.values(P).find(q=>q.role==r&&!q.hid&&!q.out&&!q.leave&&!q.pend&&!q.ent);
 function tkNpc(r,x){const w=r=='gel',b={u:w?'Gelin Hanım':'Damat Bey',lb:'',role:r,male:!w,sk:pick(SK),hr:w?'#2b1a10':'#1b1b1b',c1:w?'#000':'#1a237e',c2:'#fff',dr:w?'#fff':'',ph:R(0,6),x,y:CY+56,s:1.75,ts:1.75,al:0,msg:'',mt:0,ms:0};EX.push(b);return b}
 function tkStart(t){if(TK||EV||MS||CUR||INTRO.length)return;t=t||Date.now()/1000;
  let g1=tkFind('gel'),d1=tkFind('dam');const gn=!g1,dn=!d1;if(gn)g1=tkNpc('gel',CX-64);if(dn)d1=tkNpc('dam',CX+64);g1.tp=0;d1.tp=0;
  TK={t0:t,ph:'go',pt:t,total:0,by:Object.create(null),lines:[],g:g1,d:d1,gn,dn,sayT:0};
- evLast='taki';tkNext=t+CFG.takiDur+CFG.takiGap;evAt=t+CFG.takiDur+R(CFG.evMin,CFG.evMax);msAt=Math.max(msAt,t+CFG.takiDur+40);
+ tkNext=nxt(tkNext,t,CFG.tkEvery);
  SHK=Math.max(SHK,14);confetti(80,true);say(g1,'Hayırlı olsun!',2200);say(d1,'Sağ olun!',2200)}
 function tkGift(u,c){const T=TK,now=Date.now();T.total+=c;T.by[u]=(T.by[u]||0)+c;LASTB=u;
  const L=T.lines,l=L[L.length-1];if(l&&l.u==u&&now-l.t0<5000){l.n+=c;l.t0=now}else{L.push({u,n:c,born:now,t0:now});if(L.length>5)L.shift()}
@@ -688,7 +741,7 @@ function tkStep(t,dt){const T=TK,age=t-T.t0,now=Date.now();
  if(T.ph=='go'&&age>=4.2)T.ph='run';
  if(T.ph!='end'&&age>=CFG.takiDur){T.ph='end';T.pt=t;confetti(150,true);burst(CX,CY+40,16);SHK=Math.max(SHK,10);
   if(T.gn)T.g.gone=true;if(T.dn)T.d.gone=true;say(T.g,'Hayırlı olsun!',2400);say(T.d,'Teşekkürler!',2400)}
- else if(T.ph=='end'&&t-T.pt>=5.4){if(T.g.tp!=null)T.g.tp=0;if(T.d.tp!=null)T.d.tp=0;TK=null}}
+ else if(T.ph=='end'&&t-T.pt>=5.4){if(T.g.tp!=null)T.g.tp=0;if(T.d.tp!=null)T.d.tp=0;TK=null;QU=t+CFG.quiet}}
 // merasim boyunca: gelin-damat öne, nedime-sağdıç yanlarına, geri kalan herkes (halaycılar, halay başı, akraba) kenara yürür
 function tkMove(){for(const u in P){const p=P[u];if(p.out||p.leave||p.pend||p.ent)continue;const r=p.role;
   if(r=='gel'){p.tx=CX-64;p.ty=CY+56;p.ts=1.75}
@@ -744,8 +797,11 @@ function tick(){qTick();const now=Date.now(),dt=Math.min(.1,(now-last)/1000);las
   for(let i=queue.length-1;i>=0;i--)if(now-(SEEN[queue[i]]||0)>480000){WL.delete(queue[i]);queue.splice(i,1)}
   for(let i=AQ.length-1;i>=0;i--)if(now-(SEEN[AQ[i]]||0)>720000)AQ.splice(i,1)}
  if(HOLD>0)HOLD=Math.max(0,HOLD-dt);else HEAT=Math.max(0,HEAT-dt/CFG.decay);
- if(!EV&&!MS&&!TK&&t>evAt){if(ring.length>=3&&!CUR&&!INTRO.length){if(ring.length>=6&&t>tkNext&&evLast!='taki'&&Math.random()<CFG.takiP)tkStart(t);else startEvent(pick(Object.keys(EVS).filter(k=>k!=evLast&&!(k=='davulcu'&&holder('davul')))))}else evAt=t+20}
- if(!MS&&!EV&&!TK&&t>msAt){if(ring.length>=6&&!CUR&&!INTRO.length)msStart(t);else msAt=t+20}
+ // sıra: takı merasimi (12 dk) > müzisyen seçimi (8 dk) > mini olay (6 dk); biri sürerken diğeri bekler, bitince 25 sn nefes payı
+ if(!EV&&!MS&&!TK&&t>QU&&!CUR&&!INTRO.length){
+  if(t>tkNext){if(ring.length>=6)tkStart(t);else tkNext=t+20}
+  else if(t>msAt){if(ring.length>=6)msStart(t);else msAt=t+20}
+  else if(t>evAt){if(ring.length>=3)startEvent(pick(Object.keys(EVS).filter(k=>k!=evLast&&!(k=='davulcu'&&holder('davul')))));else evAt=t+20}}
  msStep(t);if(TK)tkStep(t,dt);
  const tm=EV?evStep(t,dt):1;TM=(1+HEAT*2)*tm;PHASE+=dt*TM;const ta=PHASE;SHK*=Math.exp(-dt*3.5);
  for(const p of Object.values(P).concat(EX)){if(p.evr||p.lie){p.evr=(p.evr||0)+((p.lie?1.5:0)-(p.evr||0))*(1-Math.exp(-dt*4));if(!p.lie&&Math.abs(p.evr)<.005)p.evr=0}
@@ -818,7 +874,7 @@ function tick(){qTick();const now=Date.now(),dt=Math.min(.1,(now-last)/1000);las
   const rt=(p.evr||0)+(p.out?(p.rot||0):p.ent?(p.erot||0):p.role=='akraba'?(p.rot||0):ox/45*.5);
   if(rt){const cy=Y+lf-40*p.s;g.save();g.translate(X,cy);g.rotate(rt);g.translate(-X,-cy);person(p,X,Y,p.s,ta,p.role=='l',p.al,lf);g.restore()}
   else person(p,X,Y,p.s,ta,p.role=='l',p.al,lf)});
- all.forEach(p=>label(p,p.x+(p.ox||0)+(p.evx||0),p.y+(p.oy||0)+(p.evy||0),p.s));tkPins(t);
+ all.forEach(p=>label(p,p.x+(p.ox||0)+(p.evx||0),p.y+(p.oy||0)+(p.evy||0),p.s));tkPins(t);if(EV&&EV.k=='yagmur')umbrellas(EV,t);
  if(EV&&EV.k=='tansiyon'&&EV.tg&&EV.ph!='ok'){const b=EV.tg,th=b.evr||0,hx=b.x+47*b.s*Math.sin(th),hy2=b.y-40*b.s-47*b.s*Math.cos(th)-30;g.save();g.textAlign='center';g.font='900 26px system-ui,sans-serif';g.fillStyle='#ffeb3b';g.strokeStyle='#7a4a00';g.lineWidth=3;
   for(let i=0;i<3;i++){const a=t*4+i*2.094,x=hx+Math.cos(a)*30,y=hy2+Math.sin(a)*9;g.strokeText('★',x,y);g.fillText('★',x,y)}g.restore()}
  if(kid)person(kid,kid.x,kid.y,kid.s,ta*2,false,1);
@@ -835,6 +891,7 @@ function tick(){qTick();const now=Date.now(),dt=Math.min(.1,(now-last)/1000);las
  if(AQ.length){const q='Kötü akraba sırasında '+AQ.length+' kişi var';g.strokeText(q,540,1600);g.fillText(q,540,1600)}
  g.restore();
  if(EV&&EV.k=='elektrik'&&EV.da>.01)darkness(EV.da,EV.ph=='bad'?0:EV.m);
+ if(EV&&EV.k=='yagmur'&&EV.rn>.01)rainFx(EV,t);
  for(const c of CONF){g.save();g.translate(c.x,c.y);g.rotate(c.rot);g.fillStyle=c.c;g.fillRect(-c.sz/2,-c.sz/4,c.sz,c.sz/2);g.restore()}
  // özel giriş başlığı
  if(CUR){const u=(now-CUR.t0)/1000,k=CUR.k,D=k.dur,a=Math.min(1,u/.1)*Math.min(1,Math.max(0,(D-.15-u)/.35)),pop=u<.32?eob(u/.32):1,scl=1+(1-pop)*1.5,akr=CUR.r=='akraba',cy=560;
@@ -871,7 +928,7 @@ function tick(){qTick();const now=Date.now(),dt=Math.min(.1,(now-last)/1000);las
  evHud(t);msHud(t);tkHud(t);
  if(DEBUG){g.save();g.fillStyle='rgba(0,0,0,.8)';g.fillRect(20,1600,1040,270);g.textAlign='left';g.font='600 24px monospace';g.fillStyle='#9ad';g.fillText('Sürüm: '+VERSION+'   Kalite: L'+QL+'  kare: '+qEma.toFixed(1)+' ms',40,1635);g.font='700 30px monospace';
   g.fillStyle=TF.st.indexOf('BAĞLI')==0?'#7CFC00':'#ff8a80';g.fillText('TikFinity: '+TF.st,40,1685);
-  g.fillStyle='#fff';g.fillText('Gelen mesaj: '+TF.msgs+'   İşlenen: '+TF.ok,40,1730);
+  g.fillStyle='#fff';g.fillText(('Gelen: '+TF.msgs+' İşlenen: '+TF.ok+'  '+Object.entries(TF.ev).sort((a,b)=>b[1]-a[1]).slice(0,4).map(e=>e[0]+':'+e[1]).join(' ')).slice(0,56),40,1730);
   g.font='600 24px monospace';g.fillStyle='#ffe27a';g.fillText('Son: '+TF.last.slice(0,62),40,1780);g.fillText(TF.last.slice(62,124),40,1815);
   g.fillStyle='#bbb';g.fillText('Sahnede: '+ring.length+' kişi  Son hediye: '+TF.gift.slice(0,34),40,1855);g.restore()}
  requestAnimationFrame(tick)}
