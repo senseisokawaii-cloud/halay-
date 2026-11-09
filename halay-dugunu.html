@@ -35,7 +35,7 @@ canvas{display:block;height:100vh;aspect-ratio:9/16;margin:0 auto;max-width:100%
 // stay: özel roller 8 dk, stayAk: kötü akraba 90 sn, stayFree: yorumla katılan halaycı 3 dk
 // Tempo: her hediye heatBase+değer*heatPer kadar tempo ekler ve holdBase+değer*holdPer sn o hızda tutar (en çok holdMax sn); sonra decay sn'de sıfıra iner
 const CFG={leader:5,sag:10,ned:10,dam:20,gel:20,akraba:30,stay:480,stayAk:90,stayFree:180,max:100,minStay:15,takiDur:78,stayMus:240,msDur:30,evEvery:360,msEvery:480,tkEvery:720,scEvery:1200,quiet:25,likeStep:300,likeCap:.5,likeRef:10,likeTau:10,likeRise:.35,likeFall:.011,likeBoost:.25,likeMax:.75,likeToast:15,celAt:[1000,2500,5000],celEvery:5000,heatBase:.14,heatPer:.36,holdBase:12,holdPer:.5,holdMax:150,decay:80};
-const VERSION='v1.3c';document.title='Halay Düğünü '+VERSION;
+const VERSION='v1.3e';document.title='Halay Düğünü '+VERSION;
 const cv=document.getElementById('c'),g=cv.getContext('2d'),pn=document.getElementById('p');
 if(!location.hash.includes('test'))pn.style.display='none';
 addEventListener('keydown',e=>{if(e.key=='h'||e.key=='H')pn.style.display=pn.style.display=='none'?'':'none'});
@@ -50,27 +50,33 @@ function heatUp(c){const k=Math.min(c,100);HEAT=Math.min(1,HEAT+CFG.heatBase+k/1
 // Hediye atan kişi ekranda "X tempoyu artırdı!" diye görünür, ekran sallanır
 const TOASTS=[];
 function toast(u,c){LASTB=u;const now=Date.now(),l=TOASTS[TOASTS.length-1];
- if(l&&l.u==u&&now-l.t0<4000){l.n++;l.t0=now}else{TOASTS.push({u,n:1,born:now,t0:now});if(TOASTS.length>3)TOASTS.shift()}
+ if(l&&!l.lk&&l.u==u&&now-l.t0<4000){l.n++;l.t0=now}else{TOASTS.push({u,n:1,born:now,t0:now});if(TOASTS.length>3)TOASTS.shift()}
  SHK=Math.max(SHK,9+Math.min(c,100)*.18);confetti(Math.min(50,8+Math.round(c*.5)),false)}
 // ---- Beğeniler: her beğeni sessizce biraz tempo ekler (en çok likeCap'e kadar), her likeStep beğenide ekstra hızlanma + kısa bildirim ----
-const LK={n:0,tot:0,tl:0,lt:0,ms:0,tc:0,acc:0,rate:0,h:0};
+const LK={n:0,tot:0,tl:0,lt:0,ms:0,tc:0,tt:0,acc:0,rate:0,h:0};
+// beğenen kişinin adı kısa süre "X tempoyu artırdı!" diye görünür: aynı kişi yenilenir, yeni kişi en fazla 1,5 sn'de bir, hediye bildirimlerinin yerini almaz
+function likeToast(u){u=String(u==null?'':u).trim();if(!u)return;const now=Date.now();
+ for(const o of TOASTS)if(o.lk&&o.u==u&&now-o.t0<4000){o.t0=now;return}
+ if(now-LK.tt<1500)return;
+ if(TOASTS.length>=3){const i=TOASTS.findIndex(o=>o.lk);if(i<0)return;TOASTS.splice(i,1)}
+ LK.tt=now;TOASTS.push({u,n:1,lk:1,born:now,t0:now})}
 function onLike(u,c){c=Math.floor(+c);if(!(c>0))return;c=Math.min(c,2000);LK.tot+=c;LK.n+=c;LK.lt=Date.now();celCheck();
  if(TK&&TK.ph!='end'){LK.n%=CFG.likeStep;return}
- LK.acc+=c;
+ LK.acc+=c;likeToast(u);
  let k=0;while(LK.n>=CFG.likeStep&&k<3){LK.n-=CFG.likeStep;k++}LK.n%=CFG.likeStep;
  if(k){const now=Date.now();if(HEAT<CFG.likeMax)HEAT=Math.min(CFG.likeMax,HEAT+CFG.likeBoost*Math.min(k,2));LK.ms=now;
-  if(now-LK.tc>CFG.likeToast*1000){LK.tc=now;TOASTS.push({u:(CFG.likeStep*k)+' beğeni!',tail:' Halay hızlandı!',n:1,born:now,t0:now});if(TOASTS.length>3)TOASTS.shift();SHK=Math.max(SHK,10);confetti(40,false)}}}
+  if(now-LK.tc>CFG.likeToast*1000){LK.tc=now;SHK=Math.max(SHK,10);confetti(40,false)}}}
 // beğeni hızı (sn'de kaç) ~10 sn'lik ortalamayla ölçülür; tempo hedefi hıza göre belirlenir (likeRef beğeni/sn = tavan likeCap). Hedef düşünce tempo yavaşça iner
 function lkTick(dt){LK.rate+=(LK.acc/Math.max(dt,.001)-LK.rate)*(1-Math.exp(-dt/CFG.likeTau));LK.acc=0;if(LK.rate<.02)LK.rate=0;
  const tg=CFG.likeCap*Math.min(1,LK.rate/CFG.likeRef);
  if(tg>LK.h)LK.h+=(tg-LK.h)*(1-Math.exp(-dt*CFG.likeRise));else LK.h=Math.max(tg,LK.h-dt*CFG.likeFall);
  if(HEAT<LK.h)HEAT=LK.h}
-function likeHud(){if(!(LK.tot>0))return;const now=Date.now(),cx=920,y=486,W=204,H=30,x0=cx-W/2,f=Math.min(1,LK.n/CFG.likeStep),fl=now-LK.ms<900?1-(now-LK.ms)/900:0,col=fl>0?'#ffeb3b':'#ff6b8a';
+function likeHud(){if(!(LK.tot>0))return;const now=Date.now(),cx=920,y=486,W=216,H=30,x0=cx-W/2,f=Math.min(1,LK.n/CFG.likeStep),fl=now-LK.ms<900?1-(now-LK.ms)/900:0,col=fl>0?'#ffeb3b':'#ff6b8a';
  g.save();g.fillStyle='rgba(40,14,6,.78)';g.strokeStyle=col;g.lineWidth=2.5;g.beginPath();g.roundRect(x0,y,W,H,15);g.fill();g.stroke();
  g.fillStyle=col;{const hx=x0+19,hy=y+17;g.beginPath();g.moveTo(hx,hy+7);g.bezierCurveTo(hx-15,hy-3,hx-7,hy-14,hx,hy-6);g.bezierCurveTo(hx+7,hy-14,hx+15,hy-3,hx,hy+7);g.fill()}
  g.fillStyle='rgba(255,255,255,.22)';g.beginPath();g.roundRect(x0+36,y+9,92,12,6);g.fill();
  g.fillStyle=col;g.beginPath();g.roundRect(x0+36,y+9,Math.max(12,92*f),12,6);g.fill();
- g.fillStyle='#fff';g.textAlign='center';g.font='800 16px "Trebuchet MS",system-ui,sans-serif';g.fillText(LK.n+'/'+CFG.likeStep,x0+168,y+21);g.restore()}
+ g.fillStyle='#fff';g.textAlign='center';g.font='800 20px "Trebuchet MS",system-ui,sans-serif';g.fillText(LK.n+'/'+CFG.likeStep,x0+172,y+22);g.restore()}
 // ---- Toplam beğeni kutlaması: 1000 / 2500 / 5000 (sonra her 5000) toplam beğenide havai fişek + "Düğün şenlendi!" ----
 const CEL={on:false,pend:0,t0:0,D:9,lv:0,next:CFG.celAt[0],fw:[],sn:0,dk:0};
 const FWC=['#ff5252','#ffd740','#69f0ae','#40c4ff','#e040fb','#ff9100','#f48fb1'];
@@ -94,7 +100,7 @@ function celDraw(){if(!CEL.fw.length&&CEL.dk<=0)return;
  for(const p of CEL.fw){if(p.k=='r'){g.globalAlpha=1;g.strokeStyle='#ffe9a8';g.lineWidth=6;g.beginPath();g.moveTo(p.x,p.y);g.lineTo(p.x-p.vx*.1,p.y-p.vy*.1);g.stroke()}
   else{const q=Math.max(0,Math.min(1,p.life/p.max));g.fillStyle=p.c;g.strokeStyle=p.c;g.lineCap='round';g.globalAlpha=Math.min(1,q*1.8);g.lineWidth=p.r*(.35+q*.55);g.beginPath();g.moveTo(p.x,p.y);g.lineTo(p.x-p.vx*.05,p.y-p.vy*.05);g.stroke();g.beginPath();g.arc(p.x,p.y,p.r*(.35+q*.4),0,7);g.fill()}}
  g.restore()}
-function celHud(t){if(!CEL.on)return;bigBanner('DÜĞÜN ŞENLENDİ!',CEL.lv+' beğeniye ulaştık, havai fişek zamanı!','Beğeni atmaya devam!','#ffe27a',t-CEL.t0,Math.min(CEL.D-.5,6),'#ff80ab')}
+function celHud(t){if(!CEL.on)return;bigBanner('DÜĞÜN ŞENLENDİ!',CEL.lv+' beğeniye ulaştık, havai fişek zamanı!','Şenlik sürüyor!','#ffe27a',t-CEL.t0,Math.min(CEL.D-.5,6),'#ff80ab')}
 window.kutlama=v=>{CEL.pend=+v||1000};
 const SEEN=Object.create(null);
 const P=Object.create(null),ring=[],queue=[],tot=Object.assign(Object.create(null),tot0);
@@ -828,15 +834,19 @@ const HINTS=['Yorum yaz, halaya katıl!','Karakterin değişsin mi? "değiştir"
 // ---- Hediye bildirimleri ----
 function drawToasts(){const now=Date.now();
  for(let i=TOASTS.length-1;i>=0;i--)if(now-TOASTS[i].t0>4200)TOASTS.splice(i,1);
- const y0=EV||MS||TK?450:372;
+ const y0=EV||MS||TK?444:384;
  TOASTS.forEach((o,i)=>{const age=(now-o.born)/1000,life=(now-o.t0)/1000,sl=age<.35?eob(age/.35):1,fo=Math.min(1,(4.2-life)/.4);
-  const nm=o.u.length>14?o.u.slice(0,13)+'…':o.u,tail=o.tail||' tempoyu artırdı!'+(o.n>1?'  x'+o.n:'');
-  g.save();g.font='800 30px "Trebuchet MS",system-ui,sans-serif';
-  const w1=g.measureText(nm).width,w2=g.measureText(tail).width,W=w1+w2+78,x=40-(1-sl)*(W+60),y=y0+i*58;
-  g.globalAlpha=Math.max(0,fo);g.fillStyle='rgba(40,14,6,.78)';g.strokeStyle='#ffb300';g.lineWidth=3;
-  g.beginPath();g.roundRect(x,y-30,W,44,22);g.fill();g.stroke();
-  g.fillStyle='#ff7043';g.beginPath();g.moveTo(x+26,y-24);g.lineTo(x+38,y-10);g.lineTo(x+31,y-10);g.lineTo(x+31,y+6);g.lineTo(x+21,y+6);g.lineTo(x+21,y-10);g.lineTo(x+14,y-10);g.closePath();g.fill();
-  g.textAlign='left';g.fillStyle='#ffe27a';g.fillText(nm,x+56,y+2);g.fillStyle='#fff';g.fillText(tail,x+56+w1,y+2);g.restore()})}
+  const nm=o.u.length>13?o.u.slice(0,12)+'…':o.u,tail=o.tail||' tempoyu artırdı!'+(o.n>1?'  x'+o.n:'');
+  g.save();g.font='800 36px "Trebuchet MS",system-ui,sans-serif';
+  const w1=g.measureText(nm).width,w2=g.measureText(tail).width,W=w1+w2+92,k=Math.min(1,740/W),x=40-(1-sl)*(W*k+60),y=y0+i*62;
+  g.globalAlpha=Math.max(0,fo);g.translate(x,y);g.scale(k,k);
+  g.fillStyle='rgba(40,14,6,.8)';g.strokeStyle=o.lk?'#ff6b8a':'#ffb300';g.lineWidth=3;
+  g.beginPath();g.roundRect(0,-36,W,54,27);g.fill();g.stroke();
+  g.save();g.translate(33,-9);g.scale(1.25,1.25);
+  if(o.lk){g.fillStyle='#ff6b8a';g.beginPath();g.moveTo(0,7);g.bezierCurveTo(-15,-3,-7,-14,0,-6);g.bezierCurveTo(7,-14,15,-3,0,7);g.fill()}
+  else{g.fillStyle='#ff7043';g.beginPath();g.moveTo(0,-15);g.lineTo(12,-1);g.lineTo(5,-1);g.lineTo(5,15);g.lineTo(-5,15);g.lineTo(-5,-1);g.lineTo(-12,-1);g.closePath();g.fill()}
+  g.restore();
+  g.textAlign='left';g.fillStyle='#ffe27a';g.fillText(nm,66,2);g.fillStyle='#fff';g.fillText(tail,66+w1,2);g.restore()})}
 
 // ---- Mini olaylar: yorum yazılmazsa düğün bozulur (yaklaşık 20 dakikada bir) ----
 const EX=[]; // olay figüranları (misafir gelin, kaynana)
@@ -976,9 +986,9 @@ function bigBanner(t1,t2,t3,col,u,D,lc){if(CUR)return;const a=Math.min(1,u/.12)*
  g.save();g.globalAlpha=a;g.textAlign='center';g.lineJoin='round';
  g.fillStyle='rgba(24,10,6,.8)';g.fillRect(0,cy-104,1080,bh);g.fillStyle=lc||col;g.fillRect(0,cy-104,1080,6);g.fillRect(0,cy-104+bh-6,1080,6);
  fitFont(t1,980,84,34);g.save();g.translate(540,cy);g.scale(scl,scl);g.lineWidth=12;g.strokeStyle='#2a0d08';g.fillStyle=col;g.strokeText(t1,0,0);g.fillText(t1,0,0);g.restore();
- let f2=38;g.font='700 38px '+FF;while(g.measureText(t2).width>980&&f2>20){f2-=2;g.font='700 '+f2+'px '+FF}
+ let f2=42;g.font='700 42px '+FF;while(g.measureText(t2).width>980&&f2>20){f2-=2;g.font='700 '+f2+'px '+FF}
  g.lineWidth=8;g.strokeStyle='#2a0d08';g.fillStyle='#fff';g.strokeText(t2,540,cy+56);g.fillText(t2,540,cy+56);
- if(t3){let f3=30;g.font='800 30px '+FF;while(g.measureText(t3).width>980&&f3>16){f3-=2;g.font='800 '+f3+'px '+FF}g.lineWidth=6;g.fillStyle=col;g.strokeText(t3,540,cy+104);g.fillText(t3,540,cy+104)}
+ if(t3){let f3=34;g.font='800 34px '+FF;while(g.measureText(t3).width>980&&f3>16){f3-=2;g.font='800 '+f3+'px '+FF}g.lineWidth=6;g.fillStyle=col;g.strokeText(t3,540,cy+104);g.fillText(t3,540,cy+104)}
  g.restore()}
 // Kamera odağı: olayda ilgili karaktere, takı merasiminde gelin-damada, müzisyen seçiminde müzisyenlere yakınlaşır
 function camFocus(t){const cl=(x,y,z)=>({x:Math.max(160,Math.min(920,x)),y:Math.max(900,Math.min(1400,y-60)),z});
@@ -1151,23 +1161,23 @@ function tkPins(t){const T=TK;if(!T)return;
   g.restore()}}
 function tkHud(t){const T=TK;if(!T)return;const age=t-T.t0,pa=t-T.pt,now=Date.now();
  if(T.ph=='end'){const top=Object.entries(T.by).sort((a,b)=>b[1]-a[1])[0],nm=u=>u.length>16?u.slice(0,15)+'…':u;
-  bigBanner('TAKI MERASİMİ BİTMİŞTİR!','Haydi herkes halaya!',T.total>0&&top?'Toplam '+T.total+' takı  •  En çok takan: '+nm(top[0])+' ('+top[1]+')':'Hayırlı olsun!','#ffd54f',pa,5.4,'#ffd54f');return}
- const bn=age<4.2;if(bn)bigBanner('TAKI MERASİMİ BAŞLAMIŞTIR!','Gelin ve damata takı takılıyor','Hediye gönderen takı takar','#ffd54f',age,4.2,'#ffd54f');
+  bigBanner('MUTLULUKLAR DİLERİZ!','Haydi herkes halaya!',T.total>0&&top?'Toplam '+T.total+' takı  •  En çok takan: '+nm(top[0])+' ('+top[1]+')':'Hayırlı olsun!','#ffd54f',pa,5.4,'#ffd54f');return}
+ const bn=age<4.2;if(bn)bigBanner('GELİN İLE DAMAT ÖNDE!','Hayırlı olsun, mutluluklar!','','#ffd54f',age,4.2,'#ffd54f');
  g.save();g.textAlign='center';g.lineJoin='round';
- if(!bn){const pop=age<4.6?eob((age-4.2)/.4):1,pulse=1+.03*Math.sin(t*10),title='TAKI MERASİMİ';fitFont(title,940,56,26);
+ if(!bn){const pop=age<4.6?eob((age-4.2)/.4):1,pulse=1+.03*Math.sin(t*10),title='GELİN & DAMAT';fitFont(title,940,56,26);
   g.save();g.translate(540,262);g.scale(pop*pulse,pop*pulse);g.lineWidth=10;g.strokeStyle='#2a0d08';g.fillStyle='#ffd54f';g.strokeText(title,0,0);g.fillText(title,0,0);g.restore();
-  g.lineWidth=6;g.strokeStyle='#2a0d08cc';g.fillStyle='#fff';g.font='700 30px '+FF;g.strokeText('Gelin ve damata takı takılıyor',420,318);g.fillText('Gelin ve damata takı takılıyor',420,318);
-  g.font='800 26px '+FF;g.lineWidth=5;g.fillStyle='#ffd54f';const tt='Toplam: '+T.total+' takı';g.strokeText(tt,420,352);g.fillText(tt,420,352)}
+  g.lineWidth=6;g.strokeStyle='#2a0d08cc';g.fillStyle='#fff';g.font='700 36px '+FF;const ln='Hayırlı olsun, mutluluklar!';g.strokeText(ln,420,312);g.fillText(ln,420,312);
+  g.font='800 30px '+FF;g.lineWidth=5;g.fillStyle='#ffd54f';const tt='Toplam: '+T.total+' takı';g.strokeText(tt,420,356);g.fillText(tt,420,356)}
  {const x=70,y=372,w=700,h=26,m=Math.max(0,Math.min(1,1-age/CFG.takiDur));
   g.fillStyle='rgba(0,0,0,.6)';g.beginPath();g.roundRect(x-4,y-4,w+8,h+8,16);g.fill();
   g.fillStyle='#ffb300';g.beginPath();g.roundRect(x,y,Math.max(h,w*m),h,13);g.fill()}
  const L=T.lines;
  L.forEach((l,i)=>{const ag=(now-l.born)/1000,life=(now-l.t0)/1000,sl=ag<.3?eob(ag/.3):1,fo=Math.min(1,(9-life)/.5);
   const nm=l.u.length>14?l.u.slice(0,13)+'…':l.u,tail=' '+l.n+' takı taktı, hayırlı olsun!';
-  g.save();g.font='800 32px '+FF;const w1=g.measureText(nm).width,w2=g.measureText(tail).width,W=w1+w2+60,y=1640-(L.length-1-i)*62;
+  g.save();g.font='800 36px '+FF;const w1=g.measureText(nm).width,w2=g.measureText(tail).width,W=w1+w2+64,y=1640-(L.length-1-i)*68;
   g.globalAlpha=Math.max(0,fo);g.translate(540,y-8);g.scale(sl,sl);g.translate(-540,-(y-8));
-  g.fillStyle='rgba(40,14,6,.82)';g.strokeStyle='#ffd54f';g.lineWidth=3;g.beginPath();g.roundRect(540-W/2,y-32,W,48,24);g.fill();g.stroke();
-  g.textAlign='left';g.fillStyle='#ffd54f';g.fillText(nm,540-W/2+30,y+2);g.fillStyle='#fff';g.fillText(tail,540-W/2+30+w1,y+2);g.restore()});
+  g.fillStyle='rgba(40,14,6,.82)';g.strokeStyle='#ffd54f';g.lineWidth=3;g.beginPath();g.roundRect(540-W/2,y-36,W,54,27);g.fill();g.stroke();
+  g.textAlign='left';g.fillStyle='#ffd54f';g.fillText(nm,540-W/2+32,y+4);g.fillStyle='#fff';g.fillText(tail,540-W/2+32+w1,y+4);g.restore()});
  g.restore()}
 window.taki=()=>{if(!EV&&!MS&&!TK&&!CUR&&!INTRO.length)tkStart()};
 
@@ -1259,8 +1269,8 @@ function tick(){qTick();const now=Date.now(),dt=Math.min(.1,(now-last)/1000);las
  if(cam.z>1.001){g.translate(cam.fx,cam.fy);g.scale(cam.z,cam.z);g.translate(-cam.fx,-cam.fy)}
  drawScene(t);skyFx(t,dt);beams(t);lights(t);sign();music(ta);
  if(!EV&&!MS&&!TK){g.textAlign='center';g.font='900 68px "Trebuchet MS",system-ui,sans-serif';g.lineWidth=10;g.strokeStyle='#5a1f12';g.fillStyle='#ffe27a';
-  g.strokeText('Halay Başlasın!',540,260);g.fillText('Halay Başlasın!',540,260);
-  {const u=(t%6)/6,a=Math.min(1,u*8)*Math.min(1,(1-u)*8),hs=HINTS.concat(['Beğeni at, '+CEL.next+' beğenide havai fişek var!']),h=hs[Math.floor(t/6)%hs.length];g.save();g.globalAlpha=a;g.font='700 30px "Trebuchet MS",system-ui,sans-serif';g.lineWidth=7;g.strokeStyle='#3a1a0acc';g.fillStyle='#ffffff';g.strokeText(h,430,314);g.fillText(h,430,314);g.restore()}}
+  g.strokeText('Hayırlı Olsun!',540,260);g.fillText('Hayırlı Olsun!',540,260);
+  {const u=(t%6)/6,a=Math.min(1,u*8)*Math.min(1,(1-u)*8),hs=HINTS.concat(['Havai fişek hedefi: '+CEL.next+' beğeni']),h=hs[Math.floor(t/6)%hs.length];g.save();g.globalAlpha=a;let fh=40;g.font='800 40px "Trebuchet MS",system-ui,sans-serif';while(g.measureText(h).width>760&&fh>24){fh-=2;g.font='800 '+fh+'px "Trebuchet MS",system-ui,sans-serif'}g.lineWidth=9;g.strokeStyle='#3a1a0acc';g.fillStyle='#ffffff';g.strokeText(h,430,322);g.fillText(h,430,322);g.restore()}}
  const all=Object.values(P).filter(p=>!p.hid).concat(EX).sort((a,b)=>a.y-b.y);
  all.forEach(p=>{const ox=p.ox||0,oy=p.oy||0,lf=p.jy||0,X=p.x+ox+(p.evx||0),Y=p.y+oy+(p.evy||0);
   const rt=(p.evr||0)+(p.out?(p.rot||0):p.ent?(p.erot||0):p.role=='akraba'?(p.rot||0):ox/45*.5);
@@ -1314,8 +1324,8 @@ function tick(){qTick();const now=Date.now(),dt=Math.min(.1,(now-last)/1000);las
   g.font='700 17px "Trebuchet MS",system-ui,sans-serif';g.fillStyle='#fff';g.fillText('TEMPO',cx,cy+72);g.restore()}
  if(HOLD>0&&LASTB){const cx=920,y=536,a=Math.min(1,HOLD/2),nm=LASTB.length>12?LASTB.slice(0,11)+'…':LASTB;
   g.save();g.globalAlpha=a;g.fillStyle='rgba(40,14,6,.82)';g.strokeStyle='#ffb300';g.lineWidth=3;g.beginPath();g.roundRect(cx-120,y,240,88,18);g.fill();g.stroke();
-  g.textAlign='center';g.font='800 27px "Trebuchet MS",system-ui,sans-serif';g.fillStyle='#ffe27a';g.fillText(nm,cx,y+32);
-  g.font='700 21px "Trebuchet MS",system-ui,sans-serif';g.fillStyle='#fff';g.fillText('tempoyu artırdı!',cx,y+58);
+  g.textAlign='center';g.font='800 30px "Trebuchet MS",system-ui,sans-serif';g.fillStyle='#ffe27a';g.fillText(nm,cx,y+32);
+  g.font='700 24px "Trebuchet MS",system-ui,sans-serif';g.fillStyle='#fff';g.fillText('tempoyu artırdı!',cx,y+58);
   g.fillStyle='rgba(255,255,255,.2)';g.beginPath();g.roundRect(cx-100,y+68,200,8,4);g.fill();
   g.fillStyle='#ffb300';g.beginPath();g.roundRect(cx-100,y+68,Math.max(8,200*Math.min(1,HOLD/40)),8,4);g.fill();g.restore()}
  likeHud();drawToasts();
@@ -1324,7 +1334,7 @@ function tick(){qTick();const now=Date.now(),dt=Math.min(.1,(now-last)/1000);las
   g.fillStyle=TF.st.indexOf('BAĞLI')==0?'#7CFC00':'#ff8a80';g.fillText('TikFinity: '+TF.st,40,1685);
   g.fillStyle='#fff';g.fillText(('Gelen: '+TF.msgs+' İşlenen: '+TF.ok+'  '+Object.entries(TF.ev).sort((a,b)=>b[1]-a[1]).slice(0,4).map(e=>e[0]+':'+e[1]).join(' ')).slice(0,56),40,1730);
   g.font='600 24px monospace';g.fillStyle='#ffe27a';g.fillText('Son: '+TF.last.slice(0,62),40,1780);g.fillText(TF.last.slice(62,124),40,1815);
-  g.fillStyle='#bbb';g.fillText('Sahnede: '+ring.length+'  Beğeni: '+LK.tot+' ('+LK.rate.toFixed(1)+'/sn)  Hediye: '+TF.gift.slice(0,22),40,1855);g.restore()}
+  g.fillStyle='#bbb';g.fillText('Sahnede: '+ring.length+'  Beğeni: '+LK.tot+' ('+LK.rate.toFixed(1)+'/sn)  Son tetik: '+TF.gift.slice(0,22),40,1855);g.restore()}
  requestAnimationFrame(tick)}
 tick();
 </script></body></html>
